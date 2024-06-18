@@ -1,10 +1,8 @@
 import sha1 from 'sha1';
 import { ObjectId } from 'mongodb';
-import Queue from 'bull';
 import dbClient from '../utils/db';
+import AuthController from './AuthController';
 import redisClient from '../utils/redis';
-
-const userQueue = new Queue('userQueue');
 
 class UsersController {
   static async postNew(req, res) {
@@ -27,24 +25,19 @@ class UsersController {
       password: sha1(password),
     });
     res.status(201).send({ id: newUser.insertedId, email });
-    await userQueue.add({ userId: newUser.insertedId });
   }
 
   static async getMe(req, res) {
-    const token = req.header('X-Token') || null;
-    const key = `auth_${token}`;
-    const userId = await redisClient.get(key);
-    if (!userId) {
-      res.status(401).send({ error: 'Unauthorized' });
-      return;
-    }
+    const token = req.get('X-Token');
+    const userId = await redisClient.get(AuthController.getKey(token));
     const user = await dbClient.users.findOne({ _id: ObjectId(userId) });
-    if (!user) {
+
+    if (user) {
+      res.send({ email: user.email, id: userId });
+    } else {
       res.status(401).send({ error: 'Unauthorized' });
-      return;
     }
-    res.status(200).send({ id: user._id, email: user.email });
   }
 }
 
-module.exports = UsersController;
+export default UsersController;
